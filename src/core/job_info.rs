@@ -33,6 +33,14 @@ mod tests {
     }
 
     #[test]
+    fn test_display() {
+        let info = JobInfo::new("x".into(), "* * * * * *".into(), true, "desc".into());
+        let s = info.to_string();
+        assert!(s.contains("x"));
+        assert!(s.contains("desc"));
+    }
+
+    #[test]
     fn test_job_info_disabled() {
         let info = JobInfo::new("a".into(), "* * * * *".into(), false, "".into());
         assert!(!info.enabled);

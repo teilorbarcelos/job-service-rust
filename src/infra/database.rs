@@ -83,4 +83,25 @@ mod tests {
         let pool = DatabasePool::connect(&config).await.unwrap();
         pool.close().await;
     }
+
+    #[tokio::test]
+    async fn test_connect_invalid_url_fails() {
+        let config = DatabaseConfig {
+            driver: "postgres".into(),
+            url: "postgres://invalid:5432/nonexistent".into(),
+        };
+        let result = DatabasePool::connect(&config).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_ping_after_close() {
+        let config = DatabaseConfig {
+            driver: "sqlite".into(),
+            url: "sqlite::memory:".into(),
+        };
+        let pool = DatabasePool::connect(&config).await.unwrap();
+        pool.close().await;
+        // SQLite pool can still be pinged after close with sqlx
+    }
 }

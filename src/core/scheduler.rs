@@ -287,4 +287,125 @@ mod tests {
         s.stop();
         s.wait_for_running_jobs().await;
     }
+
+    #[tokio::test]
+    async fn test_start_ok() {
+        let config = Arc::new(AppConfig::default());
+        let jobs = vec![make_test_job("ok", "*/5 * * * * *")];
+        let s = Scheduler::new(jobs, make_mock_cron(), config).unwrap();
+        let result = s.start().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_tick_with_no_jobs() {
+        let config = Arc::new(AppConfig::default());
+        let s = Scheduler::new(vec![], make_mock_cron(), config).unwrap();
+        s.start().await.unwrap();
+        s.tick().await;
+    }
+
+    #[tokio::test]
+    async fn test_tick_executes_job() {
+        let executed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let executed_clone = executed.clone();
+
+        struct ExecJob {
+            executed: Arc<std::sync::atomic::AtomicBool>,
+        }
+        #[async_trait]
+        impl BaseJob for ExecJob {
+            fn name(&self) -> &str { "exec-me" }
+            fn schedule(&self) -> &str { "*/1 * * * * *" }
+            fn description(&self) -> &str { "" }
+            fn enabled(&self) -> bool { true }
+            async fn handle(&self, _ctx: &JobContext, _config: &AppConfig) -> Result<(), AppError> {
+                self.executed.store(true, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            }
+        }
+
+        let job = Arc::new(ExecJob { executed: executed_clone });
+        let jobs: Vec<Arc<dyn BaseJob>> = vec![job];
+        let cron = make_mock_cron();
+        let config = Arc::new(AppConfig::default());
+        let s = Scheduler::new(jobs, cron, config).unwrap();
+        s.start().await.unwrap();
+
+        // Overwrite next run to be in the past
+        s.next_runs.lock().await[0] = Some(Utc::now() - chrono::Duration::hours(1));
+
+        s.tick().await;
+
+        assert!(executed.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn test_tick_skips_disabled_job() {
+        let config = Arc::new(AppConfig::default());
+        let jobs = vec![make_disabled_job("disabled", "*/1 * * * * *")];
+        let s = Scheduler::new(jobs, make_mock_cron(), config).unwrap();
+        s.start().await.unwrap();
+        s.tick().await;
+    }
+
+    #[tokio::test]
+    async fn test_tick_with_null_next_run() {
+        struct NullCron;
+        impl CronAdapter for NullCron {
+            fn is_valid(&self, _expr: &str) -> bool { true }
+            fn next_run_date(&self, _expr: &str, _from: DateTime<Utc>) -> Option<DateTime<Utc>> { None }
+        }
+
+        struct NullJob;
+        #[async_trait]
+        impl BaseJob for NullJob {
+            fn name(&self) -> &str { "null" }
+            fn schedule(&self) -> &str { "*/1 * * * * *" }
+            fn description(&self) -> &str { "" }
+            fn enabled(&self) -> bool { true }
+            async fn handle(&self, _ctx: &JobContext, _config: &AppConfig) -> Result<(), AppError> { Ok(()) }
+        }
+
+        let config = Arc::new(AppConfig::default());
+        let s = Scheduler::new(
+            vec![Arc::new(NullJob)],
+            Arc::new(NullCron),
+            config,
+        ).unwrap();
+        s.start().await.unwrap();
+        s.tick().await;
+    }
+
+    #[tokio::test]
+    async fn test_tick_handle_error() {
+        struct ErrJob;
+        #[async_trait]
+        impl BaseJob for ErrJob {
+            fn name(&self) -> &str { "err" }
+            fn schedule(&self) -> &str { "*/1 * * * * *" }
+            fn description(&self) -> &str { "" }
+            fn enabled(&self) -> bool { true }
+            async fn handle(&self, _ctx: &JobContext, _config: &AppConfig) -> Result<(), AppError> {
+                Err(AppError::Job("failed".into()))
+            }
+        }
+
+        struct ImmediateCron;
+        impl CronAdapter for ImmediateCron {
+            fn is_valid(&self, _expr: &str) -> bool { true }
+            fn next_run_date(&self, _expr: &str, _from: DateTime<Utc>) -> Option<DateTime<Utc>> {
+                Some(Utc::now() - chrono::Duration::hours(1))
+            }
+        }
+
+        let config = Arc::new(AppConfig::default());
+        let s = Scheduler::new(
+            vec![Arc::new(ErrJob)],
+            Arc::new(ImmediateCron),
+            config,
+        ).unwrap();
+        s.start().await.unwrap();
+        s.tick().await;
+    }
 }

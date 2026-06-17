@@ -66,6 +66,22 @@ mod tests {
         assert_eq!(result.error, Some("err".into()));
     }
 
+    struct TestDefaultEnabled;
+    #[async_trait::async_trait]
+    impl BaseJob for TestDefaultEnabled {
+        fn name(&self) -> &str { "test" }
+        fn schedule(&self) -> &str { "* * * * * *" }
+        fn description(&self) -> &str { "" }
+        async fn handle(&self, _ctx: &JobContext, _config: &AppConfig) -> Result<(), AppError> {
+            Ok(())
+        }
+    }
+
+    fn test_default_enabled() {
+        let job = TestDefaultEnabled;
+        assert!(job.enabled());
+    }
+
     #[test]
     fn test_job_result_clone() {
         let a = JobResult::new("a".into(), JobStatus::Success, 0, None);

@@ -87,6 +87,46 @@ fn get_env_int_u16(key: &str, default: u16) -> u16 {
 mod tests {
     use super::*;
 
+    // Helper to run load_config tests without env var interference
+    fn with_env<T>(key: &str, value: &str, f: impl FnOnce() -> T) -> T {
+        let prev = std::env::var(key).ok();
+        std::env::set_var(key, value);
+        let result = f();
+        match prev {
+            Some(v) => std::env::set_var(key, v),
+            None => std::env::remove_var(key),
+        }
+        result
+    }
+
+    #[test]
+    fn test_load_config_defaults() {
+        with_env("DATABASE_URL", "sqlite::memory:", || {
+            let cfg = load_config().unwrap();
+            assert_eq!(cfg.database.driver, "sqlite");
+        });
+        with_env("HEALTH_CHECK_CRON", "*/5 * * * * *", || {
+            let cfg = load_config().unwrap();
+            assert_eq!(cfg.jobs.health_check_cron, "*/5 * * * * *");
+        });
+    }
+
+    #[test]
+    fn test_load_config_with_postgres() {
+        with_env("DATABASE_URL", "postgres://user:pass@localhost/db", || {
+            let cfg = load_config().unwrap();
+            assert_eq!(cfg.database.driver, "postgres");
+        });
+    }
+
+    #[test]
+    fn test_load_config_messaging_enabled() {
+        with_env("MESSAGING_ENABLED", "true", || {
+            let cfg = load_config().unwrap();
+            assert!(cfg.messaging.enabled);
+        });
+    }
+
     #[test]
     fn test_default_config() {
         let cfg = AppConfig::default();

@@ -48,3 +48,54 @@ impl MessagingProvider {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_connect_disabled() {
+        let config = MessagingConfig {
+            enabled: false,
+            host: "localhost".into(),
+            port: 5672,
+            user: "guest".into(),
+            password: "guest".into(),
+        };
+        let provider = MessagingProvider::connect(&config).await.unwrap();
+        assert!(!provider.enabled);
+        assert!(!provider.is_open());
+    }
+
+    #[tokio::test]
+    async fn test_close_no_connection() {
+        let mut provider = MessagingProvider {
+            connection: None,
+            enabled: true,
+        };
+        provider.close().await;
+        assert!(!provider.is_open());
+    }
+
+    #[tokio::test]
+    async fn test_connect_with_bad_host() {
+        let config = MessagingConfig {
+            enabled: true,
+            host: "192.0.2.1".into(),
+            port: 5672,
+            user: "guest".into(),
+            password: "guest".into(),
+        };
+        let result = MessagingProvider::connect(&config).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_is_open_no_connection() {
+        let provider = MessagingProvider {
+            connection: None,
+            enabled: true,
+        };
+        assert!(!provider.is_open());
+    }
+}

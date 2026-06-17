@@ -14,42 +14,6 @@ pub struct HealthCheckResult {
     pub error: Option<String>,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_health_check_result_up() {
-        let r = HealthCheckResult::up(5);
-        assert_eq!(r.status, "up");
-        assert_eq!(r.latency_ms, Some(5));
-        assert!(r.error.is_none());
-    }
-
-    #[test]
-    fn test_health_check_result_down() {
-        let r = HealthCheckResult::down(10, "error msg".into());
-        assert_eq!(r.status, "down");
-        assert_eq!(r.latency_ms, Some(10));
-        assert_eq!(r.error, Some("error msg".into()));
-    }
-
-    #[test]
-    fn test_health_check_result_disabled() {
-        let r = HealthCheckResult::disabled();
-        assert_eq!(r.status, "disabled");
-        assert!(r.latency_ms.is_none());
-        assert!(r.error.is_none());
-    }
-
-    #[test]
-    fn test_clone() {
-        let a = HealthCheckResult::up(1);
-        let b = a.clone();
-        assert_eq!(a.status, b.status);
-    }
-}
-
 impl HealthCheckResult {
     pub fn up(latency_ms: u64) -> Self {
         Self {
@@ -123,5 +87,100 @@ impl HealthChecker for DefaultHealthChecker {
                 "Not connected".to_string(),
             )
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::infra::database::DatabasePool;
+    use crate::infra::messaging::MessagingProvider;
+    use crate::infra::redis::RedisProvider;
+    use crate::shared::config::{DatabaseConfig, MessagingConfig, RedisConfig};
+    use std::sync::Arc;
+
+    #[test]
+    fn test_health_check_result_up() {
+        let r = HealthCheckResult::up(5);
+        assert_eq!(r.status, "up");
+        assert_eq!(r.latency_ms, Some(5));
+        assert!(r.error.is_none());
+    }
+
+    #[test]
+    fn test_health_check_result_down() {
+        let r = HealthCheckResult::down(10, "error msg".into());
+        assert_eq!(r.status, "down");
+        assert_eq!(r.latency_ms, Some(10));
+        assert_eq!(r.error, Some("error msg".into()));
+    }
+
+    #[test]
+    fn test_health_check_result_disabled() {
+        let r = HealthCheckResult::disabled();
+        assert_eq!(r.status, "disabled");
+        assert!(r.latency_ms.is_none());
+        assert!(r.error.is_none());
+    }
+
+    #[test]
+    fn test_clone() {
+        let a = HealthCheckResult::up(1);
+        let b = a.clone();
+        assert_eq!(a.status, b.status);
+    }
+
+    async fn make_checker() -> DefaultHealthChecker {
+        let db = Arc::new(
+            DatabasePool::connect(&DatabaseConfig {
+                driver: "sqlite".into(),
+                url: "sqlite::memory:".into(),
+            })
+            .await
+            .unwrap(),
+        );
+        let redis = Arc::new(
+            RedisProvider::connect(&RedisConfig {
+                host: "localhost".into(),
+                port: 6379,
+                password: "".into(),
+                db: 0,
+            })
+            .await
+            .unwrap(),
+        );
+        let rabbit = Arc::new(tokio::sync::Mutex::new(
+            MessagingProvider::connect(&MessagingConfig {
+                enabled: false,
+                host: "localhost".into(),
+                port: 5672,
+                user: "guest".into(),
+                password: "guest".into(),
+            })
+            .await
+            .unwrap(),
+        ));
+        DefaultHealthChecker { db, redis, rabbit }
+    }
+
+    #[tokio::test]
+    async fn test_check_postgres_returns_status() {
+        let checker = make_checker().await;
+        let result = checker.check_postgres().await;
+        assert!(result.status == "up" || result.status == "down");
+    }
+
+    #[tokio::test]
+    async fn test_check_redis_returns_status() {
+        let checker = make_checker().await;
+        let result = checker.check_redis().await;
+        assert!(result.status == "down" || result.status == "up");
+    }
+
+    #[tokio::test]
+    async fn test_check_rabbitmq_disabled() {
+        let checker = make_checker().await;
+        let result = checker.check_rabbitmq().await;
+        assert_eq!(result.status, "disabled");
     }
 }

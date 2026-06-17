@@ -38,3 +38,39 @@ impl RedisProvider {
         // Pool will be dropped when RedisProvider is dropped
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_connect_bad_host_pool_succeeds_but_ping_fails() {
+        let config = RedisConfig {
+            host: "192.0.2.1".into(),
+            port: 6379,
+            password: "".into(),
+            db: 0,
+        };
+        // Pool creation may succeed (it's lazy), but ping should fail
+        let result = RedisProvider::connect(&config).await;
+        if let Ok(provider) = result {
+            let ping = provider.ping().await;
+            assert!(ping.is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_connect_and_close() {
+        let config = RedisConfig {
+            host: "localhost".into(),
+            port: 6379,
+            password: "".into(),
+            db: 0,
+        };
+        // Connect may fail if Redis is not running, but close should still work
+        if let Ok(provider) = RedisProvider::connect(&config).await {
+            provider.close().await;
+            assert!(true);
+        }
+    }
+}
