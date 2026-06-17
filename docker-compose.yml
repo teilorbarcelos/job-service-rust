@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: backend_rust_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespw
+      POSTGRES_DB: backend_rust
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d backend_rust"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: backend_rust_app
+    ports:
+      - "8888:8888"
+    environment:
+      - PORT=8888
+      - HOST=0.0.0.0
+      - ENVIRONMENT=local
+      - DEBUG=true
+      - DATABASE_URL=postgresql://postgres:postgrespw@db:5432/backend_rust?schema=public
+      - DATABASE_URL_AUDIT=postgresql://postgres:postgrespw@db:5432/backend_rust?schema=audit
+      - JWT_SECRET=local-development-secret-key
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

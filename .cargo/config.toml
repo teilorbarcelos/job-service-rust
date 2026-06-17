@@ -1,0 +1,3 @@
+# Configuração de build local para limitar uso de CPU e preservar temperatura da máquina
+[build]
+jobs = 1

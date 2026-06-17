@@ -1,0 +1,128 @@
+#!/bin/bash
+# Pre-Commit Hook: Formatter, Clippy Linter, and Custom Comment Cleaner Checks.
+set -e
+
+# ANSI escape codes for colors
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+echo -e "${BLUE}🔍 Running Pre-Commit Code Quality Checks...${NC}"
+
+# 1. Check Rust Formatting
+echo -e "${YELLOW}1/6 Checking Rust Formatter (cargo fmt)...${NC}"
+if ! cargo fmt --all -- --check; then
+    echo -e "${RED}❌ Formatting check failed! Run 'cargo fmt --all' to fix formatting.${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✓ Formatter check passed!${NC}"
+
+# 2. Run Clippy Linter (Treating warnings as errors)
+echo -e "${YELLOW}2/6 Checking Rust Lints (cargo clippy)...${NC}"
+if ! cargo clippy --all-targets --all-features -- -D warnings; then
+    echo -e "${RED}❌ Clippy lints failed! Fix the warnings above to proceed.${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✓ Clippy checks passed!${NC}"
+
+# 3. Check for Commented-out Code (// let, // fn, etc.)
+echo -e "${YELLOW}3/6 Scanning staged files for commented-out code...${NC}"
+staged_files=$(git diff --cached --name-only --diff-filter=ACM | grep '\.rs$' || true)
+
+commented_code_found=0
+if [ -n "$staged_files" ]; then
+    for file in $staged_files; do
+        if [[ "$file" == *"src/models/"* || "$file" == *"tests/"* ]]; then
+            continue
+        fi
+
+        matches=$(grep -nE "^\s*//\s*(let|fn|struct|impl|use|pub|mut|if|for|while|match|return|loop|query\.)\s" "$file" || true)
+        semicolon_matches=$(grep -nE "^\s*//\s*[^/].*;" "$file" || true)
+
+        if [ -n "$matches" ] || [ -n "$semicolon_matches" ]; then
+            echo -e "${RED}❌ Commented-out code detected in file: $file${NC}"
+            if [ -n "$matches" ]; then
+                echo -e "${YELLOW}Matches found:${NC}\n$matches"
+            fi
+            if [ -n "$semicolon_matches" ]; then
+                echo -e "${YELLOW}Semicolon comment matches found:${NC}\n$semicolon_matches"
+            fi
+            commented_code_found=1
+        fi
+    done
+fi
+
+if [ $commented_code_found -eq 1 ]; then
+    echo -e "${RED}❌ Commit rejected. Please remove commented-out code to keep the repository clean!${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✓ No commented-out code detected!${NC}"
+
+# 4. Check for Empty Doc Comments (/// with no text)
+echo -e "${YELLOW}4/6 Scanning staged files for empty triple-slash doc comments...${NC}"
+empty_doc_found=0
+if [ -n "$staged_files" ]; then
+    for file in $staged_files; do
+        if [[ "$file" == *"src/models/"* || "$file" == *"tests/"* ]]; then
+            continue
+        fi
+
+        empty_docs=$(grep -nE "^\s*///\s*$" "$file" || true)
+        if [ -n "$empty_docs" ]; then
+            echo -e "${RED}❌ Empty doc comment (///) detected in file: $file${NC}"
+            echo -e "${YELLOW}Lines:${NC}\n$empty_docs"
+            empty_doc_found=1
+        fi
+    done
+fi
+
+if [ $empty_doc_found -eq 1 ]; then
+    echo -e "${RED}❌ Commit rejected. Please provide actual documentation or remove the empty '///' comments!${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✓ No empty doc comments detected!${NC}"
+
+# 5. Check for any comments (// or ///)
+echo -e "${YELLOW}5/6 Scanning staged files for any comments (// or ///)...${NC}"
+comments_found=0
+if [ -n "$staged_files" ]; then
+    for file in $staged_files; do
+        if [[ "$file" == *"src/models/"* || "$file" == *"tests/"* ]]; then
+            continue
+        fi
+
+        any_comments=$(grep -nE "^\s*//" "$file" || true)
+        if [ -n "$any_comments" ]; then
+            echo -e "${RED}❌ Comment detected in file: $file${NC}"
+            echo -e "${YELLOW}Lines:${NC}\n$any_comments"
+            comments_found=1
+        fi
+    done
+fi
+
+if [ $comments_found -eq 1 ]; then
+    echo -e "${RED}❌ Commit rejected. Please remove all '//' and '///' comments to keep the code self-documenting!${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✓ No comments detected!${NC}"
+
+# 6. Check Test Coverage (Minimum 95%)
+echo -e "${YELLOW}6/6 Checking Test Coverage (cargo tarpaulin --fail-under 95)...${NC}"
+if [ -f ./bin/cargo-tarpaulin ]; then
+    if ! ./bin/cargo-tarpaulin --fail-under 95; then
+        echo -e "${RED}❌ Test coverage check failed! Line coverage must be at least 95% to commit.${NC}"
+        exit 1
+    fi
+else
+    if ! cargo tarpaulin --fail-under 95; then
+        echo -e "${RED}❌ Test coverage check failed! Line coverage must be at least 95% to commit.${NC}"
+        exit 1
+    fi
+fi
+echo -e "${GREEN}✓ Test coverage check passed (>= 95%)!${NC}"
+
+echo -e "${GREEN}✨ All checks passed! Proceeding with commit.${NC}"
+exit 0
+

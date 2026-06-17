@@ -1,0 +1,11 @@
+[default]
+skip-clean = true
+target-dir = "target/tarpaulin"
+engine = "Llvm"
+exclude-files = [
+    "src/config.rs",
+    "src/main.rs",
+    "src/bin/generator.rs",
+    "src/bin/storage_generator.rs",
+    "src/migration/*"
+]
