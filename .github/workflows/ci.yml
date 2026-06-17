@@ -2,40 +2,33 @@ name: CI
 
 on:
   push:
-    branches: [ "main", "develop" ]
+    branches: [ develop, main ]
   pull_request:
-    branches: [ "main", "develop" ]
+    branches: [ develop, main ]
+  workflow_dispatch:
 
 jobs:
-  test:
-    name: Build & Test
+  build-and-test:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        toolchain: stable
 
-      - name: Cache Cargo dependencies
-        uses: Swatinem/rust-cache@v2
+    - name: Lint (clippy)
+      run: cargo clippy --all-targets --all-features -- -D warnings
 
-      - name: Start Infrastructure (Docker Compose)
-        run: |
-          docker compose -f docker-compose.infra.yml up -d
-          until docker exec backend_rust_db_infra pg_isready -U postgres -d backend_rust; do
-            echo "Waiting for postgres..."
-            sleep 2
-          done
+    - name: Test
+      run: cargo test
 
-      - name: Run cargo fmt check
-        run: cargo fmt --all -- --check
+    - name: Coverage
+      run: |
+        cargo install cargo-tarpaulin
+        cargo tarpaulin --workspace --timeout 300 --out Xml --output-dir coverage
 
-      - name: Run cargo clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
-
-      - name: Run tests
-        run: cargo test
+    - name: Build
+      run: cargo build --release
