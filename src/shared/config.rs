@@ -42,6 +42,22 @@ pub struct AppConfig {
     pub jobs: JobsConfig,
 }
 
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            app_env: "testing".into(),
+            app_debug: false,
+            log_level: "error".into(),
+            shutdown_timeout_ms: 30000,
+            job_execution_timeout_ms: 300000,
+            database: DatabaseConfig { driver: "sqlite".into(), url: "sqlite::memory:".into() },
+            redis: RedisConfig { host: "localhost".into(), port: 6379, password: "".into(), db: 0 },
+            messaging: MessagingConfig { enabled: false, host: "localhost".into(), port: 5672, user: "guest".into(), password: "guest".into() },
+            jobs: JobsConfig { health_check_cron: "*/1 * * * * *".into(), health_check_enabled: true },
+        }
+    }
+}
+
 fn get_env(key: &str, default: &str) -> String {
     std::env::var(key).unwrap_or_else(|_| default.to_string())
 }
@@ -65,6 +81,50 @@ fn get_env_int_u16(key: &str, default: u16) -> u16 {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(default)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_config() {
+        let cfg = AppConfig::default();
+        assert_eq!(cfg.app_env, "testing");
+        assert_eq!(cfg.log_level, "error");
+        assert_eq!(cfg.database.driver, "sqlite");
+        assert!(cfg.jobs.health_check_enabled);
+    }
+
+    #[test]
+    fn test_get_env_functions() {
+        std::env::set_var("TEST_ENV_VAR", "42");
+        assert_eq!(get_env("TEST_ENV_VAR", "0"), "42");
+        assert_eq!(get_env("NONEXISTENT", "default"), "default");
+        assert_eq!(get_env_int("TEST_ENV_VAR", 0), 42);
+        assert_eq!(get_env_int("NONEXISTENT", 99), 99);
+        assert!(!get_env_bool("TEST_ENV_VAR", false)); // "42" != "true", "1", "yes"
+        std::env::remove_var("TEST_ENV_VAR");
+    }
+
+    #[test]
+    fn test_get_env_bool_true_values() {
+        std::env::set_var("BOOL_TEST", "true");
+        assert!(get_env_bool("BOOL_TEST", false));
+        std::env::set_var("BOOL_TEST", "1");
+        assert!(get_env_bool("BOOL_TEST", false));
+        std::env::set_var("BOOL_TEST", "yes");
+        assert!(get_env_bool("BOOL_TEST", false));
+        std::env::remove_var("BOOL_TEST");
+    }
+
+    #[test]
+    fn test_get_env_int_u16() {
+        std::env::set_var("PORT_TEST", "8080");
+        assert_eq!(get_env_int_u16("PORT_TEST", 0), 8080);
+        assert_eq!(get_env_int_u16("NONEXISTENT", 9999), 9999);
+        std::env::remove_var("PORT_TEST");
+    }
 }
 
 pub fn load_config() -> Result<AppConfig, AppError> {

@@ -14,6 +14,42 @@ pub struct HealthCheckResult {
     pub error: Option<String>,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_health_check_result_up() {
+        let r = HealthCheckResult::up(5);
+        assert_eq!(r.status, "up");
+        assert_eq!(r.latency_ms, Some(5));
+        assert!(r.error.is_none());
+    }
+
+    #[test]
+    fn test_health_check_result_down() {
+        let r = HealthCheckResult::down(10, "error msg".into());
+        assert_eq!(r.status, "down");
+        assert_eq!(r.latency_ms, Some(10));
+        assert_eq!(r.error, Some("error msg".into()));
+    }
+
+    #[test]
+    fn test_health_check_result_disabled() {
+        let r = HealthCheckResult::disabled();
+        assert_eq!(r.status, "disabled");
+        assert!(r.latency_ms.is_none());
+        assert!(r.error.is_none());
+    }
+
+    #[test]
+    fn test_clone() {
+        let a = HealthCheckResult::up(1);
+        let b = a.clone();
+        assert_eq!(a.status, b.status);
+    }
+}
+
 impl HealthCheckResult {
     pub fn up(latency_ms: u64) -> Self {
         Self {

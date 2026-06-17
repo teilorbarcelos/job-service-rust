@@ -49,3 +49,38 @@ impl DatabasePool {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_connect_sqlite_memory() {
+        let config = DatabaseConfig {
+            driver: "sqlite".into(),
+            url: "sqlite::memory:".into(),
+        };
+        let pool = DatabasePool::connect(&config).await;
+        assert!(pool.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_ping_sqlite() {
+        let config = DatabaseConfig {
+            driver: "sqlite".into(),
+            url: "sqlite::memory:".into(),
+        };
+        let pool = DatabasePool::connect(&config).await.unwrap();
+        assert!(pool.ping().await);
+    }
+
+    #[tokio::test]
+    async fn test_close_sqlite() {
+        let config = DatabaseConfig {
+            driver: "sqlite".into(),
+            url: "sqlite::memory:".into(),
+        };
+        let pool = DatabasePool::connect(&config).await.unwrap();
+        pool.close().await;
+    }
+}

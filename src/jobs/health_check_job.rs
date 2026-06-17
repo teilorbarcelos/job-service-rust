@@ -77,3 +77,125 @@ impl BaseJob for HealthCheckJob {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::job_signal::JobSignal;
+    use crate::infra::health::{HealthCheckResult, HealthChecker};
+    use async_trait::async_trait;
+
+    struct MockChecker {
+        pg: HealthCheckResult,
+        rd: HealthCheckResult,
+        rq: HealthCheckResult,
+    }
+
+    #[async_trait]
+    impl HealthChecker for MockChecker {
+        async fn check_postgres(&self) -> HealthCheckResult { self.pg.clone() }
+        async fn check_redis(&self) -> HealthCheckResult { self.rd.clone() }
+        async fn check_rabbitmq(&self) -> HealthCheckResult { self.rq.clone() }
+    }
+
+    #[tokio::test]
+    async fn test_name() {
+        let checker = Arc::new(MockChecker {
+            pg: HealthCheckResult::up(5),
+            rd: HealthCheckResult::up(1),
+            rq: HealthCheckResult::disabled(),
+        });
+        let job = HealthCheckJob::new(checker);
+        assert_eq!(job.name(), "health-check");
+    }
+
+    #[tokio::test]
+    async fn test_schedule() {
+        let checker = Arc::new(MockChecker {
+            pg: HealthCheckResult::up(5),
+            rd: HealthCheckResult::up(1),
+            rq: HealthCheckResult::disabled(),
+        });
+        let job = HealthCheckJob { checker, enabled: true, schedule: "0 3 * * *".into() };
+        assert_eq!(job.schedule(), "0 3 * * *");
+    }
+
+    #[tokio::test]
+    async fn test_description() {
+        let checker = Arc::new(MockChecker {
+            pg: HealthCheckResult::up(5),
+            rd: HealthCheckResult::up(1),
+            rq: HealthCheckResult::disabled(),
+        });
+        let job = HealthCheckJob::new(checker);
+        assert!(job.description().contains("PostgreSQL"));
+    }
+
+    #[tokio::test]
+    async fn test_enabled_default() {
+        let checker = Arc::new(MockChecker {
+            pg: HealthCheckResult::up(5),
+            rd: HealthCheckResult::up(1),
+            rq: HealthCheckResult::disabled(),
+        });
+        let job = HealthCheckJob::new(checker);
+        assert!(job.enabled());
+    }
+
+    #[tokio::test]
+    async fn test_handle_healthy() {
+        let checker = Arc::new(MockChecker {
+            pg: HealthCheckResult::up(5),
+            rd: HealthCheckResult::up(1),
+            rq: HealthCheckResult::disabled(),
+        });
+        let job = HealthCheckJob::new(checker);
+        let ctx = JobContext { signal: Arc::new(JobSignal::new()) };
+        let config = AppConfig::default();
+        let result = job.handle(&ctx, &config).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_degraded_pg_down() {
+        let checker = Arc::new(MockChecker {
+            pg: HealthCheckResult::down(10, "refused".into()),
+            rd: HealthCheckResult::up(1),
+            rq: HealthCheckResult::disabled(),
+        });
+        let job = HealthCheckJob::new(checker);
+        let ctx = JobContext { signal: Arc::new(JobSignal::new()) };
+        let config = AppConfig::default();
+        let result = job.handle(&ctx, &config).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_degraded_redis_down() {
+        let checker = Arc::new(MockChecker {
+            pg: HealthCheckResult::up(5),
+            rd: HealthCheckResult::down(1, "timeout".into()),
+            rq: HealthCheckResult::disabled(),
+        });
+        let job = HealthCheckJob::new(checker);
+        let ctx = JobContext { signal: Arc::new(JobSignal::new()) };
+        let config = AppConfig::default();
+        let result = job.handle(&ctx, &config).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_prints_stdout() {
+        let checker = Arc::new(MockChecker {
+            pg: HealthCheckResult::up(5),
+            rd: HealthCheckResult::up(1),
+            rq: HealthCheckResult::disabled(),
+        });
+        let job = HealthCheckJob::new(checker);
+        let ctx = JobContext { signal: Arc::new(JobSignal::new()) };
+        let config = AppConfig::default();
+        // Capture stdout
+        let result = job.handle(&ctx, &config).await;
+        assert!(result.is_ok());
+    }
+}

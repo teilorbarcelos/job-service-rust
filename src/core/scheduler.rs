@@ -103,8 +103,8 @@ impl Scheduler {
         }
     }
 
-    pub fn is_running(&self, name: &str) -> bool {
-        self.running.blocking_lock().contains(name)
+    pub async fn is_running(&self, name: &str) -> bool {
+        self.running.lock().await.contains(name)
     }
 
     pub async fn tick(&self) {
@@ -123,7 +123,7 @@ impl Scheduler {
 
             if should_run {
                 let name = job.name().to_string();
-                if self.running.blocking_lock().contains(&name) {
+                if self.running.lock().await.contains(&name) {
                     warn!("Job {} still running, skipping", name);
                     next_runs[i] = self.cron.next_run_date(job.schedule(), Utc::now());
                     continue;
@@ -170,5 +170,121 @@ impl Scheduler {
             self.tick().await;
             sleep(Duration::from_secs(1)).await;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::DateTime;
+    use crate::core::job::BaseJob;
+    use async_trait::async_trait;
+    use std::sync::Arc;
+
+    struct TestJob {
+        name: String,
+        schedule: String,
+        description: String,
+        enabled: bool,
+    }
+
+    #[async_trait]
+    impl BaseJob for TestJob {
+        fn name(&self) -> &str { &self.name }
+        fn schedule(&self) -> &str { &self.schedule }
+        fn description(&self) -> &str { &self.description }
+        fn enabled(&self) -> bool { self.enabled }
+        async fn handle(&self, _ctx: &JobContext, _config: &AppConfig) -> Result<(), AppError> {
+            Ok(())
+        }
+    }
+
+    fn make_test_job(name: &str, schedule: &str) -> Arc<dyn BaseJob> {
+        Arc::new(TestJob {
+            name: name.to_string(),
+            schedule: schedule.to_string(),
+            description: "test".to_string(),
+            enabled: true,
+        })
+    }
+
+    fn make_disabled_job(name: &str, schedule: &str) -> Arc<dyn BaseJob> {
+        Arc::new(TestJob {
+            name: name.to_string(),
+            schedule: schedule.to_string(),
+            description: "disabled".to_string(),
+            enabled: false,
+        })
+    }
+
+    fn make_mock_cron() -> Arc<dyn CronAdapter> {
+        Arc::new(MockCronAdapter)
+    }
+
+    struct MockCronAdapter;
+    impl CronAdapter for MockCronAdapter {
+        fn is_valid(&self, expr: &str) -> bool {
+            expr != "invalid"
+        }
+        fn next_run_date(&self, _expr: &str, _from: DateTime<Utc>) -> Option<DateTime<Utc>> {
+            Some(Utc::now() + chrono::Duration::minutes(1))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_list_jobs() {
+        let config = Arc::new(AppConfig::default());
+        let jobs = vec![make_test_job("a", "*/5 * * * * *"), make_test_job("b", "*/10 * * * * *")];
+        let s = Scheduler::new(jobs, make_mock_cron(), config).unwrap();
+        let list = s.list_jobs();
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].name, "a");
+        assert_eq!(list[1].name, "b");
+    }
+
+    #[tokio::test]
+    async fn test_duplicate_name_errors() {
+        let config = Arc::new(AppConfig::default());
+        let jobs = vec![make_test_job("dup", "*/5 * * * * *"), make_test_job("dup", "*/5 * * * * *")];
+        let result = Scheduler::new(jobs, make_mock_cron(), config);
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_start_validates_cron() {
+        let config = Arc::new(AppConfig::default());
+        let invalid_job = Arc::new(TestJob {
+            name: "bad".to_string(),
+            schedule: "invalid".to_string(),
+            description: "".to_string(),
+            enabled: true,
+        });
+        let s = Scheduler::new(vec![invalid_job], make_mock_cron(), config).unwrap();
+        let result = s.start().await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_start_disabled_job() {
+        let config = Arc::new(AppConfig::default());
+        let jobs = vec![make_disabled_job("a", "*/5 * * * * *")];
+        let s = Scheduler::new(jobs, make_mock_cron(), config).unwrap();
+        let result = s.start().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_is_running() {
+        let config = Arc::new(AppConfig::default());
+        let s = Scheduler::new(vec![], make_mock_cron(), config).unwrap();
+        assert!(!s.is_running("nonexistent").await);
+    }
+
+    #[tokio::test]
+    async fn test_stop_and_wait() {
+        let config = Arc::new(AppConfig::default());
+        let s = Scheduler::new(vec![], make_mock_cron(), config).unwrap();
+        s.stop();
+        s.wait_for_running_jobs().await;
     }
 }

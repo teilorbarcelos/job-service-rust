@@ -39,3 +39,37 @@ impl JobResult {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_job_context_creation() {
+        let signal = Arc::new(JobSignal::new());
+        let ctx = JobContext { signal: signal.clone() };
+        assert!(!ctx.signal.aborted());
+    }
+
+    #[test]
+    fn test_job_result_new() {
+        let result = JobResult::new("test".into(), JobStatus::Success, 100, None);
+        assert_eq!(result.job, "test");
+        assert_eq!(result.duration_ms, 100);
+        assert!(result.error.is_none());
+    }
+
+    #[test]
+    fn test_job_result_with_error() {
+        let result = JobResult::new("test".into(), JobStatus::Failed, 50, Some("err".into()));
+        assert_eq!(result.status, JobStatus::Failed);
+        assert_eq!(result.error, Some("err".into()));
+    }
+
+    #[test]
+    fn test_job_result_clone() {
+        let a = JobResult::new("a".into(), JobStatus::Success, 0, None);
+        let b = a.clone();
+        assert_eq!(a.job, b.job);
+    }
+}
