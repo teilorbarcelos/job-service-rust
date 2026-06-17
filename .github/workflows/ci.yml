@@ -28,7 +28,7 @@ jobs:
     - name: Coverage
       run: |
         cargo install cargo-tarpaulin
-        cargo tarpaulin --workspace --timeout 300 --out Xml --output-dir coverage
+        cargo tarpaulin --workspace --timeout 300 --out Lcov --output-dir coverage
 
     - name: Build
       run: cargo build --release

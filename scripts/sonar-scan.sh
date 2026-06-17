@@ -21,12 +21,12 @@ rm -rf .sonarqube
 echo ""
 echo ">> Step 1/2: Build + tests with coverage"
 cargo test 2>/dev/null || echo "WARN: Tests failed"
-cargo tarpaulin --workspace --timeout 300 --out Xml --output-dir coverage 2>/dev/null || echo "WARN: Coverage failed"
+cargo tarpaulin --workspace --timeout 300 --out Lcov --output-dir coverage 2>/dev/null || echo "WARN: Coverage failed"
 set -e
 
 echo ""
 echo ">> Step 2/2: SonarQube scan"
-if [ -f "coverage/cobertura.xml" ]; then
+if [ -f "coverage/lcov.info" ]; then
   rm -rf .sonarqube
   "$SCANNER_BIN" \
     -Dsonar.host.url="$SONAR_HOST" \
@@ -36,9 +36,9 @@ if [ -f "coverage/cobertura.xml" ]; then
     -Dsonar.sources="src" \
     -Dsonar.tests="tests" \
     -Dsonar.exclusions="**/target/**,**/coverage/**" \
-    -Dsonar.coverageReportPaths="coverage/cobertura.xml" || echo "WARN: scanner failed (exit $?)"
+    -Dsonar.rust.lcov.reportPaths="coverage/lcov.info" || echo "WARN: scanner failed (exit $?)"
 else
-  echo "WARN: coverage/cobertura.xml not found"
+  echo "WARN: coverage/lcov.info not found"
 fi
 
 echo ""

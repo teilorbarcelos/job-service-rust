@@ -26,7 +26,7 @@ test:
 
 coverage:
 	@echo "Running tests with coverage..."
-	cargo tarpaulin --workspace --timeout 300 --out Html --out Xml --output-dir coverage
+	cargo tarpaulin --workspace --timeout 300 --out Html --out Lcov --output-dir coverage
 
 lint:
 	@echo "Running clippy..."
