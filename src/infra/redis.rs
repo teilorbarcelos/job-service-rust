@@ -77,7 +77,6 @@ mod tests {
         // Connect may fail if Redis is not running, but close should still work
         if let Ok(provider) = RedisProvider::connect(&config).await {
             provider.close().await;
-            assert!(true);
         }
     }
 }

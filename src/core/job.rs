@@ -66,18 +66,19 @@ mod tests {
         assert_eq!(result.error, Some("err".into()));
     }
 
-    struct TestDefaultEnabled;
-    #[async_trait::async_trait]
-    impl BaseJob for TestDefaultEnabled {
-        fn name(&self) -> &str { "test" }
-        fn schedule(&self) -> &str { "* * * * * *" }
-        fn description(&self) -> &str { "" }
-        async fn handle(&self, _ctx: &JobContext, _config: &AppConfig) -> Result<(), AppError> {
-            Ok(())
-        }
-    }
-
+    #[test]
     fn test_default_enabled() {
+        struct TestDefaultEnabled;
+        #[async_trait::async_trait]
+        impl super::BaseJob for TestDefaultEnabled {
+            fn name(&self) -> &str { "test" }
+            fn schedule(&self) -> &str { "* * * * * *" }
+            fn description(&self) -> &str { "" }
+            async fn handle(&self, _ctx: &super::JobContext, _config: &super::AppConfig) -> Result<(), crate::core::errors::AppError> {
+                Ok(())
+            }
+        }
+
         let job = TestDefaultEnabled;
         assert!(job.enabled());
     }
