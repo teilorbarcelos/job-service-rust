@@ -19,6 +19,16 @@ impl JobInfo {
     }
 }
 
+impl fmt::Display for JobInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "JobInfo {{ name: {}, schedule: {}, enabled: {}, description: {} }}",
+            self.name, self.schedule, self.enabled, self.description
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -44,15 +54,5 @@ mod tests {
     fn test_job_info_disabled() {
         let info = JobInfo::new("a".into(), "* * * * *".into(), false, "".into());
         assert!(!info.enabled);
-    }
-}
-
-impl fmt::Display for JobInfo {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "JobInfo {{ name: {}, schedule: {}, enabled: {}, description: {} }}",
-            self.name, self.schedule, self.enabled, self.description
-        )
     }
 }
