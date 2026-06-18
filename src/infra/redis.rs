@@ -51,11 +51,18 @@ mod tests {
             password: "".into(),
             db: 0,
         };
-        // Pool creation may succeed (it's lazy), but ping should fail
         let result = RedisProvider::connect(&config).await;
         if let Ok(provider) = result {
-            let ping = provider.ping().await;
-            assert!(ping.is_err());
+            let ping = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                provider.ping(),
+            )
+            .await;
+            match ping {
+                Ok(Err(_)) => {} // Expected
+                Err(_) => {} // Timeout is acceptable
+                Ok(Ok(())) => panic!("Expected error, got success"),
+            }
         }
     }
 

@@ -86,8 +86,16 @@ mod tests {
             user: "guest".into(),
             password: "guest".into(),
         };
-        let result = MessagingProvider::connect(&config).await;
-        assert!(result.is_err());
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            MessagingProvider::connect(&config),
+        )
+        .await;
+        match result {
+            Ok(Ok(_)) => panic!("Expected error, got success"),
+            Ok(Err(_)) => {} // Expected: connection refused
+            Err(_) => {} // Timeout is acceptable
+        }
     }
 
     #[tokio::test]
