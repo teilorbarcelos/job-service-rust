@@ -1,8 +1,7 @@
 services:
-  db:
-    image: postgres:15-alpine
-    container_name: backend_rust_db_infra
-    restart: "no"
+  postgres:
+    image: postgres:16-alpine
+    container_name: job_service_rust_db_infra
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgrespw
@@ -11,16 +10,10 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d backend_rust"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: backend_rust_redis_infra
-    restart: "no"
+    container_name: job_service_rust_redis_infra
     ports:
       - "6379:6379"
     volumes:
@@ -28,8 +21,7 @@ services:
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
-    container_name: backend_rust_rabbitmq_infra
-    restart: "no"
+    container_name: job_service_rust_rabbitmq_infra
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -40,4 +32,3 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  rabbitmq_data:

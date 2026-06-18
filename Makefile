@@ -1,92 +1,69 @@
-.PHONY: dev build test coverage check infra-up infra-stop infra-down infra-clean metrics-up metrics-stop metrics-down generate init-hooks
+.PHONY: help dev test coverage lint check infra-up infra-stop infra-down infra-clean build run sonar clean
 
-# Variables
-ENVIRONMENT ?= development
-PORT ?= 8888
+help:
+	@echo "Job Service Rust — available targets:"
+	@echo "  make dev             Run in dev mode (cargo run)"
+	@echo "  make test            Run unit tests"
+	@echo "  make coverage        Run tests with coverage (cargo tarpaulin)"
+	@echo "  make lint            Run clippy"
+	@echo "  make check           Run lint + test"
+	@echo "  make infra-up        Start PG + Redis + Rabbit via Docker Compose"
+	@echo "  make infra-stop      Stop the dev infrastructure"
+	@echo "  make infra-down      Stop and remove infra containers"
+	@echo "  make infra-clean     Stop infra and remove volumes"
+	@echo "  make build           Build Docker image"
+	@echo "  make run             Run the application (Docker)"
+	@echo "  make sonar           Run SonarQube scan"
+	@echo "  make clean           Remove target/"
 
-# Starts the development server.
-# Uses `cargo watch` for hot reloading, falling back to simple `cargo run` if not installed.
 dev:
-	@echo "🚀 Iniciando servidor de desenvolvimento Rust..."
-	@if command -v cargo-watch >/dev/null 2>&1; then \
-		cargo watch -c -q -x build -s "./target/debug/backend-rust"; \
-	elif [ -f $(HOME)/.cargo/bin/cargo-watch ]; then \
-		$(HOME)/.cargo/bin/cargo-watch -c -q -x build -s "./target/debug/backend-rust"; \
-	else \
-		echo "⚠️  cargo-watch não instalado no PATH. Executando diretamente..."; \
-		cargo run --bin backend-rust; \
-	fi
+	@echo "Running job runner..."
+	cargo run
 
-# Builds a release-optimized production binary.
-build:
-	@echo "📦 Compilando binário de produção otimizado..."
-	cargo build --release
-
-# Runs native Rust unit/integration tests.
 test:
-	@echo "🧪 Executando testes unitários..."
+	@echo "Running tests..."
 	cargo test
 
 coverage:
-	@echo "📊 Gerando relatório de cobertura de código..."
-	@if [ -f ./bin/cargo-tarpaulin ]; then \
-		./bin/cargo-tarpaulin; \
-	else \
-		cargo tarpaulin; \
-	fi
-	@echo "\n--- Resumo de Cobertura ---"
-	@echo "Verifique os detalhes acima. Se houver linhas não cobertas, elas estarão listadas na tabela."
+	@echo "Running tests with coverage..."
+	cargo tarpaulin --workspace --timeout 300 --out Html --out Lcov --output-dir coverage
 
-# Performs a static analysis check on the codebase.
-check:
-	@echo "🔍 Executando verificação estática do código..."
-	cargo check
+lint:
+	@echo "Running clippy..."
+	cargo clippy --all-targets --all-features -- -D warnings
 
-# Runs the CRUD generator. Example: make generate name=Product
-generate:
-	@echo "⚙️  Executando gerador de CRUD Rust para $(name)..."
-	cargo run --bin generator $(name)
+check: lint test
+	@echo "All checks passed"
 
-# Runs the Storage provider generator.
-generate-storage:
-	@echo "⚙️  Executando gerador de provedor de storage Rust..."
-	cargo run --bin storage_generator
-
-
-# Docker Infrastructure Management (Standard Prefix: infra-)
 infra-up:
-	@echo "🐳 Subindo infraestrutura local Rust (Postgres & Redis)..."
+	@echo "Starting infrastructure (PostgreSQL + Redis + RabbitMQ)..."
 	docker compose -f docker-compose.infra.yml up -d
 
 infra-stop:
-	@echo "🛑 Parando serviços da infraestrutura..."
+	@echo "Stopping infrastructure..."
 	docker compose -f docker-compose.infra.yml stop
 
 infra-down:
-	@echo "🗑️  Removendo containers da infraestrutura..."
+	@echo "Removing infrastructure containers..."
 	docker compose -f docker-compose.infra.yml down
 
 infra-clean:
-	@echo "🧹 Limpeza completa da infraestrutura (Volumes & Imagens)..."
+	@echo "Cleaning infrastructure..."
 	docker compose -f docker-compose.infra.yml down -v --rmi all
 
-# Métricas (Prometheus & Grafana)
-metrics-up:
-	@echo "📈 Subindo stack de métricas (Prometheus & Grafana)..."
-	docker compose -f docker-compose.metrics.yml up -d
+build:
+	@echo "Building Docker image..."
+	docker build -t job-service-rust .
 
-metrics-stop:
-	@echo "🛑 Parando stack de métricas..."
-	docker compose -f docker-compose.metrics.yml stop
+run:
+	@echo "Running application container..."
+	docker run --rm --network host job-service-rust
 
-metrics-down:
-	@echo "🗑️  Removendo stack de métricas..."
-	docker compose -f docker-compose.metrics.yml down
+sonar:
+	@echo "Running SonarQube scan..."
+	./scripts/sonar-scan.sh "job-service-rust" "Job Service Rust"
 
-# Setup local Git Pre-Commit hooks
-init-hooks:
-	@echo "⚙️  Configurando Git Pre-Commit Hooks local..."
-	@chmod +x .githooks/pre-commit
-	@git config core.hooksPath .githooks
-	@echo "✅ Hooks configurados com sucesso!"
-
+clean:
+	@echo "Cleaning artifacts..."
+	cargo clean
+	rm -rf coverage/
